@@ -23,12 +23,15 @@ class Brain:
     # Generator on purpose: a TTS layer can later split the stream by sentence
     def reply_stream(self, user_text):
         messages = self._build(user_text)
-        self.db.add_message("user", user_text)
         full = []
         for piece in self.llm.stream(messages):
             full.append(piece)
             yield piece
-        self.db.add_message("assistant", "".join(full))
+        reply = "".join(full)
+        # Save the pair only on success so history never has an orphan user turn
+        if reply.strip():
+            self.db.add_message("user", user_text)
+            self.db.add_message("assistant", reply)
         self.turns += 1
         n = self.cfg.get("auto_extract_every", 0)
         if n and self.turns % n == 0:
