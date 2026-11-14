@@ -15,17 +15,10 @@ backends:
     model: "FILL-IN-CURRENT-MODEL-NAME"
     timeout: 30
 
-  - name: groq
-    base_url: "https://api.groq.com/openai/v1"
-    api_key_env: GROQ_API_KEY
-    model: "FILL-IN-CURRENT-MODEL-NAME"
-    timeout: 30
-
   - name: openrouter
     base_url: "https://openrouter.ai/api/v1"
     api_key_env: OPENROUTER_API_KEY
     model: "FILL-IN-CURRENT-MODEL-NAME"
-    enabled: false
 
   # Local fallback. Ollama ignores the key, but the client requires a non-empty one.
   - name: local

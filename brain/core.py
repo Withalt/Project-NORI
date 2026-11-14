@@ -9,9 +9,8 @@ class Brain:
 
     def _build(self, user_text):
         mems = self.mem.search(user_text, self.cfg["memory_top_k"])
-        system = self.persona
-        if mems:
-            system += "\n\nKÝ ỨC:\n" + "\n".join(f"- {m}" for m in mems)
+        system = self.persona + "\n\nKÝ ỨC:\n" + (
+            "\n".join(f"- {m}" for m in mems) if mems else "(trống)")
         history = self.db.recent_messages(self.cfg["history_turns"] * 2)
         return [{"role": "system", "content": system}, *history,
                 {"role": "user", "content": user_text}]
