@@ -1,6 +1,12 @@
 from pathlib import Path
 
 
+def build_system(persona, mems):
+    # Always include the section, even when empty, so the model knows it has no memory to draw on
+    body = "\n".join(f"- {m}" for m in mems) if mems else "(trống)"
+    return f"{persona}\n\nKÝ ỨC:\n{body}"
+
+
 class Brain:
     def __init__(self, cfg, db, llm, memory):
         self.cfg, self.db, self.llm, self.mem = cfg, db, llm, memory
@@ -9,8 +15,7 @@ class Brain:
 
     def _build(self, user_text):
         mems = self.mem.search(user_text, self.cfg["memory_top_k"])
-        system = self.persona + "\n\nKÝ ỨC:\n" + (
-            "\n".join(f"- {m}" for m in mems) if mems else "(trống)")
+        system = build_system(self.persona, mems)
         history = self.db.recent_messages(self.cfg["history_turns"] * 2)
         return [{"role": "system", "content": system}, *history,
                 {"role": "user", "content": user_text}]
