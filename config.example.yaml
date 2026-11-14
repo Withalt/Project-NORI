@@ -14,11 +14,16 @@ backends:
     api_key_env: GEMINI_API_KEY
     model: "FILL-IN-CURRENT-MODEL-NAME"
     timeout: 30
+    enabled: true
+    max_tokens: 300
 
   - name: openrouter
     base_url: "https://openrouter.ai/api/v1"
     api_key_env: OPENROUTER_API_KEY
     model: "FILL-IN-CURRENT-MODEL-NAME"
+    enabled: true
+    strip_cjk: true
+    max_tokens: 300
 
   # Local fallback. Ollama ignores the key, but the client requires a non-empty one.
   - name: local
@@ -28,3 +33,6 @@ backends:
     timeout: 120
     # Short answers keep a small local model on topic and fast
     max_tokens: 200
+    enabled: true
+    temperature: 0.3
+    strip_cjk: true
