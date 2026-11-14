@@ -29,6 +29,11 @@ class DB:
     def __init__(self, path):
         self.c = sqlite3.connect(path, check_same_thread=False)
         self.c.executescript(SCHEMA)
+        # Migration for databases created before the model column existed
+        try:
+            self.c.execute("ALTER TABLE llm_log ADD COLUMN model TEXT")
+        except sqlite3.OperationalError:
+            pass
 
     def add_message(self, role, content):
         self.c.execute("INSERT INTO messages(ts,role,content) VALUES(?,?,?)",
@@ -40,8 +45,24 @@ class DB:
             "SELECT role, content FROM messages ORDER BY id DESC LIMIT ?", (n,)).fetchall()
         return [{"role": r, "content": c} for r, c in reversed(rows)]
 
-    def log_llm(self, backend, ok, first_token_s=None, total_s=None, error=None):
+    def log_llm(self, backend, ok, first_token_s=None, total_s=None, error=None, model=None):
         self.c.execute(
-            "INSERT INTO llm_log(ts,backend,ok,first_token_s,total_s,error) VALUES(?,?,?,?,?,?)",
-            (time.time(), backend, int(ok), first_token_s, total_s, error))
+            "INSERT INTO llm_log(ts,backend,ok,first_token_s,total_s,error,model) "
+            "VALUES(?,?,?,?,?,?,?)",
+            (time.time(), backend, int(ok), first_token_s, total_s, error, model))
         self.c.commit()
+
+    def llm_stats(self):
+        rows = self.c.execute(
+            "SELECT backend, ok, first_token_s FROM llm_log").fetchall()
+        by = {}
+        for backend, ok, first in rows:
+            s = by.setdefault(backend, {"n": 0, "fail": 0, "empty": 0, "first": []})
+            s["n"] += 1
+            if not ok:
+                s["fail"] += 1
+            elif first is None:
+                s["empty"] += 1
+            else:
+                s["first"].append(first)
+        return by

@@ -27,12 +27,15 @@ class LLMRouter:
             if self.dead_until.get(b["name"], 0) > time.time():
                 continue
             t0, first, got = time.time(), None, False
+            # Model name reported by the server; differs from config for routers like openrouter/free
+            used = None
             try:
                 s = self._client(b).chat.completions.create(
                     model=b["model"], messages=messages, stream=True,
                     max_tokens=b.get("max_tokens", 500),
                     **({"temperature": b["temperature"]} if "temperature" in b else {}))
                 for chunk in s:
+                    used = used or getattr(chunk, "model", None)
                     if not chunk.choices:
                         continue
                     d = chunk.choices[0].delta.content
@@ -50,11 +53,18 @@ class LLMRouter:
                             yield d
                         if cut:
                             break
+                if not got:
+                    # An empty reply is a failure: log it and fall through to the next backend
+                    self.db.log_llm(b["name"], False, error="empty reply",
+                                    model=used or b["model"])
+                    continue
                 self.last_backend = b["name"]
-                self.db.log_llm(b["name"], True, first, time.time() - t0)
+                self.db.log_llm(b["name"], True, first, time.time() - t0,
+                                model=used or b["model"])
                 return
             except (RateLimitError, APIConnectionError, APITimeoutError, APIError) as e:
-                self.db.log_llm(b["name"], False, error=f"{type(e).__name__}: {e}"[:300])
+                self.db.log_llm(b["name"], False, error=f"{type(e).__name__}: {e}"[:300],
+                                model=b["model"])
                 if isinstance(e, RateLimitError):
                     # Skip this backend for a while instead of retrying a spent quota
                     self.dead_until[b["name"]] = time.time() + self.cooldown
