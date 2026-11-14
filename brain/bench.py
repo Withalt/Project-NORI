@@ -31,9 +31,9 @@ TESTS = [
     {"id": 7, "mem": ["Người dùng đang ghi chú dự án trên Notion."],
      "user": "Tôi ghi chú dự án ở đâu ấy nhỉ?",
      "check": "Answers Notion"},
-    {"id": 8, "mem": ["Người dùng thích uống trà."],
-     "user": "Giải thích giúp tôi khái niệm thời gian đi",
-     "check": "Must NOT mention tea"},
+    {"id": 8, "mem": ["Người dùng thích học piano."],
+     "user": "Giải thích giúp tôi lãi kép là gì",
+     "check": "Must NOT mention piano or music"},
     {"id": 9, "user": "Met qua, lam sao bay gio",
      "check": "Understands unaccented input, replies in proper Vietnamese"},
     {"id": 10, "user": "Tôi đang bị bug null reference trong Unity, làm sao đây?",
@@ -81,7 +81,8 @@ def run_one(router, messages):
             if first is None:
                 first = time.time() - t0
             out.append(piece)
-    except AllBackendsFailed:
+    except AllBackendsFailed as e:
+        print(f"    FAILED: {e}", flush=True)
         return "", None, None
     return "".join(out), first, time.time() - t0
 
@@ -91,7 +92,7 @@ def run():
     system = Path(cfg["persona_file"]).read_text(encoding="utf-8")
     db = DB(":memory:")
     # One router per backend so nothing falls over to another model
-    routers = {b["name"]: (b, LLMRouter([b], db)) for b in cfg["backends"]}
+    routers = {b["name"]: (b, LLMRouter([b], db, cooldown=0)) for b in cfg["backends"]}
     raw = {t["id"]: {} for t in TESTS}
     stats = {n: {"first": [], "total": [], "cjk": 0, "empty": 0, "words": []} for n in routers}
 
@@ -99,10 +100,18 @@ def run():
         msgs = build_messages(system, t)
         for name, (b, router) in routers.items():
             text, first, total = run_one(router, msgs)
+            if not text.strip() and "localhost" not in b["base_url"]:
+                time.sleep(20)
+                text, first, total = run_one(router, msgs)
             raw[t["id"]][name] = text
             s = stats[name]
             if not text.strip():
                 s["empty"] += 1
+                err = db.c.execute(
+                    "SELECT error FROM llm_log WHERE backend=? AND ok=0 ORDER BY id DESC LIMIT 1",
+                    (name,)).fetchone()
+                print(f"    last error: {err[0] if err else 'none (empty reply, no exception)'}",
+                      flush=True)
             else:
                 s["words"].append(len(text.split()))
                 s["cjk"] += bool(CJK.search(text))
