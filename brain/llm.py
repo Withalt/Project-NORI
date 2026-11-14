@@ -1,0 +1,55 @@
+import time
+
+from openai import OpenAI, APIError, APIConnectionError, APITimeoutError, RateLimitError
+
+
+class AllBackendsFailed(Exception):
+    pass
+
+
+class LLMRouter:
+    def __init__(self, backends, db, cooldown=300):
+        self.backends, self.db, self.cooldown = backends, db, cooldown
+        self.clients, self.dead_until = {}, {}
+        self.last_backend = None
+
+    def _client(self, b):
+        if b["name"] not in self.clients:
+            self.clients[b["name"]] = OpenAI(
+                base_url=b["base_url"], api_key=b["api_key"], timeout=b.get("timeout", 30))
+        return self.clients[b["name"]]
+
+    def stream(self, messages):
+        for b in self.backends:
+            if self.dead_until.get(b["name"], 0) > time.time():
+                continue
+            t0, first, got = time.time(), None, False
+            try:
+                s = self._client(b).chat.completions.create(
+                    model=b["model"], messages=messages, stream=True,
+                    max_tokens=b.get("max_tokens", 500))
+                for chunk in s:
+                    if not chunk.choices:
+                        continue
+                    d = chunk.choices[0].delta.content
+                    if d:
+                        if first is None:
+                            first = time.time() - t0
+                        got = True
+                        yield d
+                self.last_backend = b["name"]
+                self.db.log_llm(b["name"], True, first, time.time() - t0)
+                return
+            except (RateLimitError, APIConnectionError, APITimeoutError, APIError) as e:
+                self.db.log_llm(b["name"], False, error=f"{type(e).__name__}: {e}"[:300])
+                if isinstance(e, RateLimitError):
+                    # Skip this backend for a while instead of retrying a spent quota
+                    self.dead_until[b["name"]] = time.time() + self.cooldown
+                # Failing over mid-stream would duplicate text, so stop instead
+                if got:
+                    return
+                continue
+        raise AllBackendsFailed("All backends failed, check the llm_log table.")
+
+    def complete(self, messages):
+        return "".join(self.stream(messages))

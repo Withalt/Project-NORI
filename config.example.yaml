@@ -1,0 +1,37 @@
+persona_file: persona.md
+db_path: companion.db
+history_turns: 10
+memory_top_k: 5
+# 0 disables automatic memory extraction (costs one extra LLM call each time)
+auto_extract_every: 0
+
+# Tried in order. Any OpenAI-compatible endpoint works; add as many as you want.
+# Set the key with: api_key_env: NAME_OF_ENV_VAR (value goes in .env, never here).
+# Backends with a missing key are skipped. Set enabled: false to switch one off.
+backends:
+  - name: gemini
+    base_url: "https://generativelanguage.googleapis.com/v1beta/openai/"
+    api_key_env: GEMINI_API_KEY
+    model: "FILL-IN-CURRENT-MODEL-NAME"
+    timeout: 30
+
+  - name: groq
+    base_url: "https://api.groq.com/openai/v1"
+    api_key_env: GROQ_API_KEY
+    model: "FILL-IN-CURRENT-MODEL-NAME"
+    timeout: 30
+
+  - name: openrouter
+    base_url: "https://openrouter.ai/api/v1"
+    api_key_env: OPENROUTER_API_KEY
+    model: "FILL-IN-CURRENT-MODEL-NAME"
+    enabled: false
+
+  # Local fallback. Ollama ignores the key, but the client requires a non-empty one.
+  - name: local
+    base_url: "http://localhost:11434/v1"
+    api_key: "ollama"
+    model: "qwen2.5:3b"
+    timeout: 120
+    # Short answers keep a small local model on topic and fast
+    max_tokens: 200
