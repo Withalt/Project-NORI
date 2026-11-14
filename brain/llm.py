@@ -1,6 +1,9 @@
+import re
 import time
 
 from openai import OpenAI, APIError, APIConnectionError, APITimeoutError, RateLimitError
+
+CJK = re.compile(r"[\u3040-\u30ff\u3400-\u9fff]")
 
 
 class AllBackendsFailed(Exception):
@@ -27,16 +30,26 @@ class LLMRouter:
             try:
                 s = self._client(b).chat.completions.create(
                     model=b["model"], messages=messages, stream=True,
-                    max_tokens=b.get("max_tokens", 500))
+                    max_tokens=b.get("max_tokens", 500),
+                    **({"temperature": b["temperature"]} if "temperature" in b else {}))
                 for chunk in s:
                     if not chunk.choices:
                         continue
                     d = chunk.choices[0].delta.content
                     if d:
-                        if first is None:
-                            first = time.time() - t0
-                        got = True
-                        yield d
+                        cut = False
+                        # Cut the stream at the first CJK character instead of showing it
+                        if b.get("strip_cjk"):
+                            m = CJK.search(d)
+                            if m:
+                                d, cut = d[:m.start()], True
+                        if d:
+                            if first is None:
+                                first = time.time() - t0
+                            got = True
+                            yield d
+                        if cut:
+                            break
                 self.last_backend = b["name"]
                 self.db.log_llm(b["name"], True, first, time.time() - t0)
                 return
