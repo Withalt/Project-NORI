@@ -4,3 +4,5 @@ persona.md
 *.db
 __pycache__/
 .venv/
+bench_out.md
+bench_key.json
